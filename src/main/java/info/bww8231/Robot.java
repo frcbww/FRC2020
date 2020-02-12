@@ -62,7 +62,7 @@ public class Robot extends TimedRobot {
      */
     @Override
     public void autonomousPeriodic() {
-        // Drive for 2 seconds
+        // 前進プログラムテスト
         if (m_timer.get() < 6.0) {
             m_robotDrive.arcadeDrive(0.5, 0.0); // drive forwards half speed
         } else {
