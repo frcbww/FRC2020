@@ -23,6 +23,7 @@ public class Robot extends TimedRobot {
     private final PWMVictorSPX launchLMove = new PWMVictorSPX(2);
     private final PWMVictorSPX launchRight = new PWMVictorSPX(3);
     private final PWMVictorSPX launchLeft = new PWMVictorSPX(4);
+    private final PWMVictorSPX collect = new PWMVictorSPX(5);
 
     private final Joystick m_stick = new Joystick(0);
     private final Timer m_timer = new Timer();
@@ -83,13 +84,26 @@ public class Robot extends TimedRobot {
      */
     @Override
     public void teleopPeriodic() {
-        double stickX = 1 * m_stick.getX();
+        double stickX = 0.8 * m_stick.getX();
         double stickY = -1 * m_stick.getY();
 
+        if (m_stick.getRawButton(1)) {
+            launchLMove.set(-0.5);
+            launchRight.set(1);
+            launchLeft.set(1);
+        } else {
+            launchLMove.set(0);
+            launchRight.set(0);
+            launchLeft.set(0);
+        }
+
+        if (m_stick.getRawButton(2)) {
+            collect.set(0.3);
+        } else {
+            collect.set(0);
+        }
+
         m_robotDrive.arcadeDrive(stickY, stickX);
-        launchLMove.set(-0.7);
-        launchRight.set(1);
-        launchLeft.set(1);
     }
 
     /**
