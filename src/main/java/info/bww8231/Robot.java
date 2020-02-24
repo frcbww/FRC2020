@@ -85,8 +85,8 @@ public class Robot extends TimedRobot {
     public void teleopPeriodic() {
         double stickX = 1 * m_stick.getX();
         double stickY = -1 * m_stick.getY();
-        m_robotDrive.arcadeDrive(stickY, stickX);
 
+        m_robotDrive.arcadeDrive(stickY, stickX);
         launchLMove.set(-0.7);
         launchRight.set(1);
         launchLeft.set(1);
