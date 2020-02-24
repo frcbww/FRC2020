@@ -7,10 +7,7 @@
 
 package info.bww8231;
 
-import edu.wpi.first.wpilibj.Joystick;
-import edu.wpi.first.wpilibj.PWMVictorSPX;
-import edu.wpi.first.wpilibj.TimedRobot;
-import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.*;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.cameraserver.CameraServer;
 
@@ -27,6 +24,8 @@ public class Robot extends TimedRobot {
 
     private final Joystick m_stick = new Joystick(0);
     private final Timer m_timer = new Timer();
+    private final Compressor c = new Compressor(0);
+    private final Solenoid exampleSolenoid = new Solenoid(1);
 
     /**
      * このメソッドはロボットが最初に起動されたときに実行され、初期化コードを書くことができます。
@@ -68,15 +67,20 @@ public class Robot extends TimedRobot {
     @Override
     public void autonomousPeriodic() {
         // 前進プログラムテスト
-        if (m_timer.get() < 3.0) {
-            m_robotDrive.arcadeDrive(0.5, 0.0); // drive forwards half speed
-        } else {
-            m_robotDrive.stopMotor(); // stop robot
-        }
+//        if (m_timer.get() < 3.0) {
+//            m_robotDrive.arcadeDrive(0.5, 0.0); // drive forwards half speed
+//        } else {
+//            m_robotDrive.stopMotor(); // stop robot
+//        }
     }
 
     @Override
     public void teleopInit() {
+        c.setClosedLoopControl(true);
+
+//        boolean enabled = c.enabled();
+//        boolean pressureSwitch = c.getPressureSwitchValue();
+//        double current = c.getCompressorCurrent();
     }
 
     /**
@@ -101,6 +105,13 @@ public class Robot extends TimedRobot {
             collect.set(0.3);
         } else {
             collect.set(0);
+        }
+
+        if (m_stick.getRawButton(3)) {
+            c.setClosedLoopControl(false);
+            exampleSolenoid.set(true);
+        } else {
+            exampleSolenoid.set(false);
         }
 
         m_robotDrive.arcadeDrive(stickY, stickX);
