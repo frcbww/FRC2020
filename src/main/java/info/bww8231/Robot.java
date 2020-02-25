@@ -21,11 +21,12 @@ public class Robot extends TimedRobot {
     private final PWMVictorSPX launchRight = new PWMVictorSPX(3);
     private final PWMVictorSPX launchLeft = new PWMVictorSPX(4);
     private final PWMVictorSPX collect = new PWMVictorSPX(5);
+    private final PWMVictorSPX collectMove = new PWMVictorSPX(6);
 
-    private final Joystick m_stick = new Joystick(0);
-    private final Timer m_timer = new Timer();
-    private final Compressor c = new Compressor(0);
-    private final Solenoid exampleSolenoid = new Solenoid(1);
+    private final Joystick stick = new Joystick(0);
+    private final Joystick signDate = new Joystick(0);
+    private final Timer timer = new Timer();
+    private final Solenoid solenoid = new Solenoid(0);
 
     /**
      * このメソッドはロボットが最初に起動されたときに実行され、初期化コードを書くことができます。
@@ -57,8 +58,8 @@ public class Robot extends TimedRobot {
      */
     @Override
     public void autonomousInit() {
-        m_timer.reset();
-        m_timer.start();
+        timer.reset();
+        timer.start();
     }
 
     /**
@@ -76,11 +77,6 @@ public class Robot extends TimedRobot {
 
     @Override
     public void teleopInit() {
-        c.setClosedLoopControl(true);
-
-//        boolean enabled = c.enabled();
-//        boolean pressureSwitch = c.getPressureSwitchValue();
-//        double current = c.getCompressorCurrent();
     }
 
     /**
@@ -88,33 +84,49 @@ public class Robot extends TimedRobot {
      */
     @Override
     public void teleopPeriodic() {
-        double stickX = 0.8 * m_stick.getX();
-        double stickY = -1 * m_stick.getY();
+        int sign = 1;   //反転係数
+        double speedRate = (-1 * signDate.getRawAxis(3) + 1) * 0.5; //速度係数
 
-        if (m_stick.getRawButton(1)) {
-            launchLMove.set(-0.5);
-            launchRight.set(1);
-            launchLeft.set(1);
+        //コントローラーデータ
+        double stickX = 0.5 * stick.getX();
+        double stickZ = 0.7 * stick.getZ();
+        double stickY = -1 * stick.getY();
+
+        double stickFB = stickY;
+        double stickLR = Math.abs(stickX + stickZ) >= 0.7 ? stickZ : stickX + stickZ;    //スピードを0.5以上にさせない
+
+        //発射機構 Button1
+        if (stick.getRawButton(1)) {
+            launchRight.set(speedRate * sign);
+            launchLeft.set(speedRate * sign);
+            launchLMove.set(-0.5 * sign);
         } else {
             launchLMove.set(0);
             launchRight.set(0);
             launchLeft.set(0);
         }
 
-        if (m_stick.getRawButton(2)) {
-            collect.set(0.3);
+        //回収機構 Button2
+        if (stick.getRawButton(2)) {
+            solenoid.set(true);
+            collect.set(0.2 * sign);
         } else {
+            solenoid.set(false);
             collect.set(0);
         }
 
-        if (m_stick.getRawButton(3)) {
-            c.setClosedLoopControl(false);
-            exampleSolenoid.set(true);
+        //反転モード Button12
+        if (stick.getRawButton(12)) {
+            sign = -1;
         } else {
-            exampleSolenoid.set(false);
+            sign = 1;
         }
 
-        m_robotDrive.arcadeDrive(stickY, stickX);
+        //回収機構（常に回転）
+        collectMove.set(-0.7 * sign);
+
+        //足回りモーター
+        m_robotDrive.arcadeDrive(stickFB * speedRate, stickLR * speedRate);
     }
 
     /**
