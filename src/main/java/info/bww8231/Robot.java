@@ -16,12 +16,13 @@ import edu.wpi.first.cameraserver.CameraServer;
  * このプロジェクトの作成後にこのクラスまたはパッケージの名前を変更する場合は、プロジェクトのbuild.gradleファイルも更新する必要があります。
  */
 public class Robot extends TimedRobot {
-    private final DifferentialDrive m_robotDrive = new DifferentialDrive(new PWMVictorSPX(0), new PWMVictorSPX(1));
+    private final DifferentialDrive robotDrive = new DifferentialDrive(new PWMVictorSPX(0), new PWMVictorSPX(1));
     private final PWMVictorSPX launchLMove = new PWMVictorSPX(2);
     private final PWMVictorSPX launchRight = new PWMVictorSPX(3);
     private final PWMVictorSPX launchLeft = new PWMVictorSPX(4);
     private final PWMVictorSPX collect = new PWMVictorSPX(5);
     private final PWMVictorSPX collectMove = new PWMVictorSPX(6);
+    private final PWMVictorSPX beltConveyor = new PWMVictorSPX(7);
 
     private final Joystick stick = new Joystick(0);
     private final Joystick signDate = new Joystick(0);
@@ -88,12 +89,19 @@ public class Robot extends TimedRobot {
         double speedRate = (-1 * signDate.getRawAxis(3) + 1) * 0.5; //速度係数
 
         //コントローラーデータ
-        double stickX = 0.5 * stick.getX();
-        double stickZ = 0.7 * stick.getZ();
+        double stickX = 0.2 * stick.getX();
+        double stickZ = 0.6 * stick.getZ();
         double stickY = -1 * stick.getY();
 
         double stickFB = stickY;
-        double stickLR = Math.abs(stickX + stickZ) >= 0.7 ? stickZ : stickX + stickZ;    //スピードを0.5以上にさせない
+        double stickLR = Math.abs(stickX + stickZ) >= 0.6 ? stickZ : stickX + stickZ;    //スピードを0.5以上にさせない
+
+        //反転モード Button12
+        if (stick.getRawButton(12)) {
+            sign = -1;
+        } else {
+            sign = 1;
+        }
 
         //発射機構 Button1
         if (stick.getRawButton(1)) {
@@ -114,19 +122,18 @@ public class Robot extends TimedRobot {
             solenoid.set(false);
             collect.set(0);
         }
-
-        //反転モード Button12
-        if (stick.getRawButton(12)) {
-            sign = -1;
+        //回収機構 Button7
+        if (stick.getRawButton(7)) {
+            beltConveyor.set(0.5 * sign);
         } else {
-            sign = 1;
+            beltConveyor.set(0);
         }
 
         //回収機構（常に回転）
         collectMove.set(-0.7 * sign);
 
         //足回りモーター
-        m_robotDrive.arcadeDrive(stickFB * speedRate, stickLR * speedRate);
+        robotDrive.arcadeDrive(stickFB * speedRate, stickLR * speedRate, true);
     }
 
     /**
