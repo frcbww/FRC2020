@@ -28,13 +28,17 @@ public class Robot extends TimedRobot {
     private final Joystick signDate = new Joystick(0);
     private final Timer timer = new Timer();
     private final Solenoid solenoid = new Solenoid(0);
+    private final ADXRS450_Gyro gyro = new ADXRS450_Gyro();
 
     /**
      * このメソッドはロボットが最初に起動されたときに実行され、初期化コードを書くことができます。
      */
     @Override
     public void robotInit() {
-        CameraServer . getInstance (). startAutomaticCapture ();
+        CameraServer . getInstance (). startAutomaticCapture (0);
+        CameraServer . getInstance (). startAutomaticCapture (1);
+        gyro.calibrate();
+        gyro.reset();
     }
 
     /**
@@ -69,11 +73,11 @@ public class Robot extends TimedRobot {
     @Override
     public void autonomousPeriodic() {
         // 前進プログラムテスト
-//        if (m_timer.get() < 3.0) {
-//            m_robotDrive.arcadeDrive(0.5, 0.0); // drive forwards half speed
-//        } else {
-//            m_robotDrive.stopMotor(); // stop robot
-//        }
+        if (timer.get() < 5.0){
+            robotDrive.arcadeDrive(0.6, (gyro.getAngle() / -15)); // ジャイロによる直進の補正
+        } else {
+            robotDrive.stopMotor();
+        }
     }
 
     @Override
@@ -87,14 +91,22 @@ public class Robot extends TimedRobot {
     public void teleopPeriodic() {
         int sign = 1;   //反転係数
         double speedRate = (-1 * signDate.getRawAxis(3) + 1) * 0.5; //速度係数
+        double launchSpeed = 0.5;
 
         //コントローラーデータ
         double stickX = 0.2 * stick.getX();
-        double stickZ = 0.6 * stick.getZ();
         double stickY = -1 * stick.getY();
+        double stickZ = 0.6 * stick.getZ();
 
         double stickFB = stickY;
         double stickLR = Math.abs(stickX + stickZ) >= 0.6 ? stickZ : stickX + stickZ;    //スピードを0.5以上にさせない
+
+        //高速モード Button11
+        if (stick.getRawButton(11)) {
+            launchSpeed = 1;
+        } else {
+            launchSpeed = 0.6;
+        }
 
         //反転モード Button12
         if (stick.getRawButton(12)) {
@@ -105,8 +117,8 @@ public class Robot extends TimedRobot {
 
         //発射機構 Button1
         if (stick.getRawButton(1)) {
-            launchRight.set(speedRate * sign);
-            launchLeft.set(speedRate * sign);
+            launchRight.set(launchSpeed * speedRate * sign);
+            launchLeft.set(-1 * launchSpeed * speedRate * sign);
             launchLMove.set(-0.5 * sign);
         } else {
             launchLMove.set(0);
@@ -122,18 +134,22 @@ public class Robot extends TimedRobot {
             solenoid.set(false);
             collect.set(0);
         }
-        //回収機構 Button7
+        //ベルトコンベア Button7
         if (stick.getRawButton(7)) {
-            beltConveyor.set(0.5 * sign);
+            beltConveyor.set(0.7 * sign);
         } else {
             beltConveyor.set(0);
+        }
+        //足回り角度の微調整モード Button8
+        if (stick.getRawButton(8)) {
+            //明日調整
+            robotDrive.arcadeDrive(0, 0);
+        } else {
+            robotDrive.arcadeDrive(stickFB * speedRate, stickLR * speedRate, true);
         }
 
         //回収機構（常に回転）
         collectMove.set(-0.7 * sign);
-
-        //足回りモーター
-        robotDrive.arcadeDrive(stickFB * speedRate, stickLR * speedRate, true);
     }
 
     /**
