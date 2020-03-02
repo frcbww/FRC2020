@@ -11,6 +11,8 @@ import edu.wpi.first.wpilibj.*;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.cameraserver.CameraServer;
 
+import java.io.UnsupportedEncodingException;
+
 /**
  * VMは、このクラスを自動的に実行し、TimedRobotのドキュメントに記載されている各モードに対応するメソッドです。
  * このプロジェクトの作成後にこのクラスまたはパッケージの名前を変更する場合は、プロジェクトのbuild.gradleファイルも更新する必要があります。
@@ -27,16 +29,23 @@ public class Robot extends TimedRobot {
     private final Joystick stick = new Joystick(0);
     private final Joystick signDate = new Joystick(0);
     private final Timer timer = new Timer();
+    private final Compressor compressor = new Compressor();
     private final Solenoid solenoid = new Solenoid(0);
     private final ADXRS450_Gyro gyro = new ADXRS450_Gyro();
+    private final SerialPort serial = new SerialPort(9600,SerialPort.Port.kUSB);
+
+    private boolean isGyroInit = false; //ジャイロ初期化
+    private boolean isSolenoid = false; //シリンダーON/OFF
+    private int sign = 1; //反転係数
+    private double speedRate; //速度係数
+    private double launchSpeed = 0.5; //発射機構の速度係数
 
     /**
      * このメソッドはロボットが最初に起動されたときに実行され、初期化コードを書くことができます。
      */
     @Override
     public void robotInit() {
-        CameraServer . getInstance (). startAutomaticCapture (0);
-        CameraServer . getInstance (). startAutomaticCapture (1);
+//        CameraServer . getInstance (). startAutomaticCapture (0);
         gyro.calibrate();
         gyro.reset();
     }
@@ -74,7 +83,7 @@ public class Robot extends TimedRobot {
     public void autonomousPeriodic() {
         // 前進プログラムテスト
         if (timer.get() < 5.0){
-            robotDrive.arcadeDrive(0.6, (gyro.getAngle() / -15)); // ジャイロによる直進の補正
+            robotDrive.arcadeDrive(0.5, (gyro.getAngle() / -20)); // ジャイロによる直進の補正
         } else {
             robotDrive.stopMotor();
         }
@@ -89,23 +98,34 @@ public class Robot extends TimedRobot {
      */
     @Override
     public void teleopPeriodic() {
-        int sign = 1;   //反転係数
-        double speedRate = (-1 * signDate.getRawAxis(3) + 1) * 0.5; //速度係数
-        double launchSpeed = 0.5;
-
         //コントローラーデータ
         double stickX = 0.2 * stick.getX();
-        double stickY = -1 * stick.getY();
         double stickZ = 0.6 * stick.getZ();
+        double stickY = stick.getY();
 
-        double stickFB = stickY;
-        double stickLR = Math.abs(stickX + stickZ) >= 0.6 ? stickZ : stickX + stickZ;    //スピードを0.5以上にさせない
+        double stickLR = stickX + stickZ;
+        double stickAbsXZ = Math.abs(stickX + stickZ);
 
-        //高速モード Button11
-        if (stick.getRawButton(11)) {
+        if (stickAbsXZ <= 0.003 && stickAbsXZ != 0) {
+            //ジャイロによる直進補正
+            gyroInit();
+            stickLR = gyro.getAngle() / -20;
+        } else if (stickAbsXZ >= 0.6) {
+            //スピード制限
+            stickLR = stickZ;
+            isGyroInit = false;
+        } else {
+            isGyroInit = false;
+        }
+
+        //速度係数
+        speedRate = (-1 * signDate.getRawAxis(3) + 1) * 0.5;
+
+        //高速モード Button4
+        if (stick.getRawButton(4)) {
             launchSpeed = 1;
         } else {
-            launchSpeed = 0.6;
+            launchSpeed = 0.53;
         }
 
         //反転モード Button12
@@ -115,8 +135,9 @@ public class Robot extends TimedRobot {
             sign = 1;
         }
 
-        //発射機構 Button1
+        //発射機構＆ベルトコンベア Button1
         if (stick.getRawButton(1)) {
+            beltConveyor.set(0.7 * sign);
             launchRight.set(launchSpeed * speedRate * sign);
             launchLeft.set(-1 * launchSpeed * speedRate * sign);
             launchLMove.set(-0.5 * sign);
@@ -134,22 +155,35 @@ public class Robot extends TimedRobot {
             solenoid.set(false);
             collect.set(0);
         }
-        //ベルトコンベア Button7
+
+        //ベルトコンベア Button7（仮）
         if (stick.getRawButton(7)) {
             beltConveyor.set(0.7 * sign);
-        } else {
-            beltConveyor.set(0);
         }
-        //足回り角度の微調整モード Button8
-        if (stick.getRawButton(8)) {
-            //明日調整
-            robotDrive.arcadeDrive(0, 0);
+
+        //微調整モード Button3
+        if (stick.getRawButton(3)) {
+            robotDrive.arcadeDrive(0, 0.6 * stickLR);
         } else {
-            robotDrive.arcadeDrive(stickFB * speedRate, stickLR * speedRate, true);
+            //足回りモーター
+            robotDrive.arcadeDrive(stickY * speedRate, stickLR * speedRate, true);
+        }
+
+        //ベルトコンベアの停止
+        if (!stick.getRawButton(1) && !stick.getRawButton(7)) {
+            beltConveyor.set(0);
         }
 
         //回収機構（常に回転）
         collectMove.set(-0.7 * sign);
+    }
+
+    @Override
+    public void testInit() {
+        compressor.stop();
+
+//        int integer = Integer.parseInt(Arduino());
+        System.out.println("*"+arduino()+"*");
     }
 
     /**
@@ -157,5 +191,34 @@ public class Robot extends TimedRobot {
      */
     @Override
     public void testPeriodic() {
+    }
+
+    //ジャイロの初期化
+    public void gyroInit() {
+        if (!isGyroInit) {
+            gyro.reset();
+            isGyroInit = true;
+        }
+    }
+
+    public String arduino() {
+        byte[] date = serial.read(4);
+
+        try {
+            String str = new String(date, "US-ASCII");
+            return str;
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+            return "";
+        }
+    }
+
+    public int getInt(String str) {
+        for (int i = 0; i < 9; i++) {
+            if (str == Integer.toString(i)) {
+                return i;
+            }
+        }
+        return -1;
     }
 }
