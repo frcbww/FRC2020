@@ -34,6 +34,8 @@ public class Robot extends TimedRobot {
     private final ADXRS450_Gyro gyro = new ADXRS450_Gyro();
     private final SerialPort serial = new SerialPort(9600,SerialPort.Port.kUSB);
 
+    private final PID pid = new PID();
+
     private boolean isGyroInit = false; //ジャイロ初期化
     private boolean isSolenoid = false; //シリンダーON/OFF
     private int sign = 1; //反転係数
@@ -183,7 +185,7 @@ public class Robot extends TimedRobot {
         compressor.stop();
 
 //        int integer = Integer.parseInt(Arduino());
-        System.out.println("*"+arduino()+"*");
+        System.out.println("*"+arduinoReceiving()+"*");
     }
 
     /**
@@ -201,7 +203,12 @@ public class Robot extends TimedRobot {
         }
     }
 
-    public String arduino() {
+    public void arduinoSubmit() {
+        final byte[] date = "1".getBytes();
+        serial.write(date, 1);
+    }
+
+    public String arduinoReceiving() {
         byte[] date = serial.read(4);
 
         try {
@@ -220,5 +227,13 @@ public class Robot extends TimedRobot {
             }
         }
         return -1;
+    }
+
+    public void drivePID(double speed, double nowAngle, double targetAngle) {
+        pid.setGain(0,0,0);
+        pid.setTarget(targetAngle);
+
+        double val = pid.getCalculation(nowAngle);
+        robotDrive.arcadeDrive(speed,val);
     }
 }
