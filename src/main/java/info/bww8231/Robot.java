@@ -33,11 +33,12 @@ public class Robot extends TimedRobot {
     private final Solenoid solenoid = new Solenoid(0);
     private final ADXRS450_Gyro gyro = new ADXRS450_Gyro();
     private final SerialPort serial = new SerialPort(9600,SerialPort.Port.kUSB);
+//    private final Encoder beltEncoder = new Encoder(0, 1);
 
     private final PID pid = new PID();
 
     private boolean isGyroInit = false; //ジャイロ初期化
-    private boolean isSolenoid = false; //シリンダーON/OFF
+    private boolean isStraight = false; //直進モードの状態
     private int sign = 1; //反転係数
     private double speedRate; //速度係数
     private double launchSpeed = 0.5; //発射機構の速度係数
@@ -47,7 +48,7 @@ public class Robot extends TimedRobot {
      */
     @Override
     public void robotInit() {
-//        CameraServer . getInstance (). startAutomaticCapture (0);
+        CameraServer . getInstance (). startAutomaticCapture (0);
         gyro.calibrate();
         gyro.reset();
     }
@@ -84,8 +85,8 @@ public class Robot extends TimedRobot {
     @Override
     public void autonomousPeriodic() {
         // 前進プログラムテスト
-        if (timer.get() < 5.0){
-            robotDrive.arcadeDrive(0.5, (gyro.getAngle() / -20)); // ジャイロによる直進の補正
+        if (timer.get() < 1.0){
+            straightPID(0.5, gyro.getAngle());
         } else {
             robotDrive.stopMotor();
         }
@@ -108,26 +109,37 @@ public class Robot extends TimedRobot {
         double stickLR = stickX + stickZ;
         double stickAbsXZ = Math.abs(stickX + stickZ);
 
-        if (stickAbsXZ <= 0.003 && stickAbsXZ != 0) {
-            //ジャイロによる直進補正
-            gyroInit();
-            stickLR = gyro.getAngle() / -20;
-        } else if (stickAbsXZ >= 0.6) {
+        if (stickAbsXZ >= 0.6) {
             //スピード制限
             stickLR = stickZ;
-            isGyroInit = false;
-        } else {
-            isGyroInit = false;
         }
 
         //速度係数
         speedRate = (-1 * signDate.getRawAxis(3) + 1) * 0.5;
 
+        //Arduinoとのシリアル通信
+        arduinoSubmit();
+        switch (arduinoReceiving()) {
+            case 0:
+                System.out.println("----None---- (Status: 0)");
+                break;
+            case 1:
+//                beltConveyor.set(0.5);
+                System.out.println("----Collect---- (Status: 1)");
+                break;
+            case 2:
+                System.out.println("----STOP---- (Status: 2)");
+                break;
+            case 3:
+                System.out.println("---Collect & STOP--- (Status: 3)");
+                break;
+        }
+
         //高速モード Button4
         if (stick.getRawButton(4)) {
             launchSpeed = 1;
         } else {
-            launchSpeed = 0.53;
+            launchSpeed = 0.5;
         }
 
         //反転モード Button12
@@ -139,7 +151,7 @@ public class Robot extends TimedRobot {
 
         //発射機構＆ベルトコンベア Button1
         if (stick.getRawButton(1)) {
-            beltConveyor.set(0.7 * sign);
+            beltConveyor.set(0.8 * sign);
             launchRight.set(launchSpeed * speedRate * sign);
             launchLeft.set(-1 * launchSpeed * speedRate * sign);
             launchLMove.set(-0.5 * sign);
@@ -166,9 +178,15 @@ public class Robot extends TimedRobot {
         //微調整モード Button3
         if (stick.getRawButton(3)) {
             robotDrive.arcadeDrive(0, 0.6 * stickLR);
+            isGyroInit = false;
+        } else if (stickAbsXZ <= 0.003 && !isStraight) {
+            //直進モード
+            gyroInit();
+            straightPID(stickY * speedRate, gyro.getAngle());
         } else {
             //足回りモーター
             robotDrive.arcadeDrive(stickY * speedRate, stickLR * speedRate, true);
+            isGyroInit = false;
         }
 
         //ベルトコンベアの停止
@@ -178,22 +196,15 @@ public class Robot extends TimedRobot {
 
         //回収機構（常に回転）
         collectMove.set(-0.7 * sign);
+
+        //直進モードのON/OFF
+        if (stickAbsXZ > 0.003) {
+            isStraight = true;
+        } else if (stickAbsXZ == 0) {
+            isStraight = false;
+        }
     }
 
-    @Override
-    public void testInit() {
-        compressor.stop();
-
-//        int integer = Integer.parseInt(Arduino());
-        System.out.println("*"+arduinoReceiving()+"*");
-    }
-
-    /**
-     * このメソッドは、テストモード中に定期的に呼び出されます。
-     */
-    @Override
-    public void testPeriodic() {
-    }
 
     //ジャイロの初期化
     public void gyroInit() {
@@ -203,37 +214,58 @@ public class Robot extends TimedRobot {
         }
     }
 
+    //PID直進
+    public void straightPID(double speed, double nowAngle) {
+        pid.setGain(0.05,0.00002,0.3);
+        pid.setTarget(0);
+
+        double val = pid.getCalculation(nowAngle);
+        robotDrive.arcadeDrive(speed,val);
+    }
+
+    //PID直角カーブ
+    public void anglePID(double speed, double nowAngle, boolean left) {
+        int sign;
+
+        if (left) {
+            sign = -1;
+        } else {
+            sign = 1;
+        }
+
+        pid.setGain(0.04,0.00001,0.07);
+        pid.setTarget(90 * sign);
+
+        double val = pid.getCalculation(nowAngle);
+        robotDrive.arcadeDrive(speed,val);
+    }
+
+    @Override
+    public void testInit() {
+    }
+
+    /**
+     * このメソッドは、テストモード中に定期的に呼び出されます。
+     */
+    @Override
+    public void testPeriodic() {
+    }
+
     public void arduinoSubmit() {
         final byte[] date = "1".getBytes();
         serial.write(date, 1);
     }
 
-    public String arduinoReceiving() {
-        byte[] date = serial.read(4);
+    public int arduinoReceiving() {
+        byte[] date = serial.read(1);
 
         try {
             String str = new String(date, "US-ASCII");
-            return str;
+            int integer = Integer.parseInt(str);
+            return integer;
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
-            return "";
+            return -1;
         }
-    }
-
-    public int getInt(String str) {
-        for (int i = 0; i < 9; i++) {
-            if (str == Integer.toString(i)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    public void drivePID(double speed, double nowAngle, double targetAngle) {
-        pid.setGain(0,0,0);
-        pid.setTarget(targetAngle);
-
-        double val = pid.getCalculation(nowAngle);
-        robotDrive.arcadeDrive(speed,val);
     }
 }
